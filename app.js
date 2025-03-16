@@ -9,6 +9,8 @@ let isCartOpen = false;
 function init() {
     selectVilla('oh-yeah');
     updateStats();
+    // Nastavit první kategorii jako aktivní
+    document.querySelector('.category-tab').classList.add('active');
 }
 
 // Správa vil
@@ -17,6 +19,50 @@ function selectVilla(villa) {
     document.querySelectorAll('.villa-btn').forEach(btn => btn.classList.remove('active'));
     document.querySelector(`.${villa}`).classList.add('active');
     renderInventory();
+}
+
+// Render inventáře podle kategorií
+function renderInventory() {
+    const inventoryEl = document.getElementById('inventory');
+    inventoryEl.innerHTML = '';
+    
+    const activeCategory = document.querySelector('.category-tab.active').dataset.category;
+    
+    inventory[currentVilla].forEach(item => {
+        // Přeskočit prázdnou položku
+        if (!item.name) return;
+        
+        // Filtrovat podle aktivní kategorie
+        if (activeCategory !== 'all' && item.category !== activeCategory) return;
+        
+        const itemEl = document.createElement('div');
+        itemEl.className = `item ${currentVilla}`;
+        
+        // Použít obrázek pokud existuje, jinak ikonu
+        let imageHtml = '';
+        if (item.image && item.image !== '') {
+            // Kontrola zda obrázek existuje - pokud ne, použij ikonu
+            imageHtml = `<img src="${item.image}" alt="${item.name}" class="item-image" onerror="this.onerror=null;this.style.display='none';this.parentNode.innerHTML += '<i class=\\'fas fa-${item.icon || 'glass-martini'}\\'></i>';">`;
+        } else if (item.icon) {
+            imageHtml = `<i class="fas ${item.icon} item-icon"></i>`;
+        } else {
+            // Výchozí ikona podle kategorie
+            let defaultIcon = 'glass-martini';
+            if (item.category === 'non-alcoholic') defaultIcon = 'bottle-water';
+            else if (item.category === 'beer') defaultIcon = 'beer';
+            else if (item.category === 'relax') defaultIcon = 'spa';
+            
+            imageHtml = `<i class="fas fa-${defaultIcon} item-icon"></i>`;
+        }
+        
+        itemEl.innerHTML = `
+            ${imageHtml}
+            <div class="item-name">${item.name}</div>
+            <div class="item-price">${item.customPrice ? 'Vlastní cena' : `${item.price} ${item.currency}`}</div>
+        `;
+        itemEl.onclick = () => handleItemClick(item);
+        inventoryEl.appendChild(itemEl);
+    });
 }
 
 // Správa množství
@@ -42,13 +88,13 @@ function adjustQuantity(delta) {
 }
 
 function confirmQuantity() {
-    const newItems = Array(currentQuantity).fill().map((_, i) => ({
+    const newItem = {
         ...selectedItem,
-        id: Date.now() + i,
-        quantity: 1
-    }));
+        id: Date.now(),
+        quantity: currentQuantity
+    };
     
-    cart.push(...newItems);
+    cart.push(newItem);
     hideQuantitySelector();
     renderCart();
     updateStats();
@@ -56,9 +102,9 @@ function confirmQuantity() {
 
 // Správa položek
 function handleItemClick(item) {
-    if (item.name === 'Wellness balíček' || item.customPrice) {
-        const price = prompt('Zadejte cenu wellness v EUR:');
-        if (price === null || isNaN(price)) return;
+    if (item.customPrice) {
+        const price = prompt('Zadejte cenu v ' + item.currency + ':');
+        if (price === null || isNaN(parseFloat(price))) return;
         
         cart.push({
             ...item,
@@ -91,15 +137,17 @@ function renderCart() {
     document.getElementById('cartCount').textContent = cart.length;
     cartEl.innerHTML = '';
     
-    const groupedItems = cart.reduce((acc, item) => {
+    // Seskupit položky podle jména, ceny a měny
+    const groupedItems = {};
+    
+    cart.forEach(item => {
         const key = `${item.name}-${item.price}-${item.currency}`;
-        if (!acc[key]) {
-            acc[key] = { ...item, quantity: 1 };
+        if (!groupedItems[key]) {
+            groupedItems[key] = { ...item, quantity: 1 };
         } else {
-            acc[key].quantity++;
+            groupedItems[key].quantity++;
         }
-        return acc;
-    }, {});
+    });
     
     Object.values(groupedItems).forEach(item => {
         const itemEl = document.createElement('div');
@@ -144,7 +192,7 @@ function calculateTotal(currency) {
 
     // Součet položek
     cart.forEach(item => {
-        let itemValue = item.price;
+        let itemValue = item.price * (item.quantity || 1);
         if (item.currency !== currency) {
             itemValue = item.currency === 'EUR' 
                 ? itemValue * EXCHANGE_RATE 
@@ -194,16 +242,17 @@ function generateInvoice() {
         'little-castle': 'var(--little-castle-color)'
     };
 
-    // Group items for invoice
-    const groupedItems = cart.reduce((acc, item) => {
+    // Group items for invoice - použití nové metody seskupení
+    const groupedItems = {};
+    
+    cart.forEach(item => {
         const key = `${item.name}-${item.price}-${item.currency}`;
-        if (!acc[key]) {
-            acc[key] = { ...item, quantity: 1 };
+        if (!groupedItems[key]) {
+            groupedItems[key] = { ...item, quantity: 1 };
         } else {
-            acc[key].quantity++;
+            groupedItems[key].quantity++;
         }
-        return acc;
-    }, {});
+    });
 
     const modal = document.getElementById('invoiceModal');
     const content = document.getElementById('invoiceContent');
@@ -253,6 +302,17 @@ function generateInvoice() {
 
 // Event Listeners
 document.addEventListener('DOMContentLoaded', init);
+
+// Přidat event listener pro kategorie
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.category-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.category-tab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            renderInventory();
+        });
+    });
+});
 
 // Keyboard shortcuts
 document.addEventListener('keydown', (e) => {
